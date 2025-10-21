@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PM2 LOG VIEWER</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #4a5568;
+            margin-bottom: 10px;
+        }
+        p {
+            text-align: center;
+            color: #718096;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 15px;
+        }
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #4a5568;
+        }
+        input[type="file"] {
+            padding: 10px;
+            border: 2px dashed #cbd5e0;
+            border-radius: 5px;
+            background: #f7fafc;
+            cursor: pointer;
+        }
+        input[type="text"] {
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        button {
+            padding: 12px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #5a67d8;
+        }
+        #results {
+            width: 100%;
+            height: 500px;
+            margin-top: 10px;
+            padding: 15px;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            background: #f7fafc;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            overflow-y: auto;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        #results div {
+            margin-bottom: 4px;
+        }
+        #results mark {
+            background-color: yellow;
+            padding: 0 2px;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 20px;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .pagination button {
+            margin: 0;
+            padding: 8px 12px;
+            background: #e2e8f0;
+            color: #4a5568;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            min-width: 40px;
+        }
+        .pagination button:hover:not(:disabled) {
+            background: #cbd5e0;
+        }
+        .pagination button:disabled {
+            background: #f7fafc;
+            color: #a0aec0;
+            cursor: not-allowed;
+        }
+        .pagination button.active {
+            background: #667eea;
+            color: white;
+        }
+        .pagination .ellipsis {
+            padding: 8px 12px;
+            color: #4a5568;
+        }
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .toolbar select {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            font-size: 14px;
+            background: white;
+        }
+        .toolbar button {
+            padding: 10px 16px;
+            white-space: nowrap;
+        }
+        .language-selector {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 20px;
+            justify-content: flex-end;
+        }
+        .language-selector button {
+            padding: 5px 10px;
+            font-size: 12px;
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+        .language-selector button.active {
+            background: #667eea;
+            color: white;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 600px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal-header h2 {
+            margin: 0;
+            color: #4a5568;
+        }
+        .close {
+            font-size: 28px;
+            font-weight: bold;
+            color: #718096;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #4a5568;
+        }
+        .config-group {
+            margin-bottom: 20px;
+        }
+        .config-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #4a5568;
+        }
+        .config-group input[type="color"],
+        .config-group input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+        }
+        .color-preview {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .color-preview input[type="color"] {
+            width: 60px;
+            height: 40px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="language-selector">
+            <button onclick="changeLanguage('pt')" id="lang-pt">🇧🇷 PT</button>
+            <button onclick="changeLanguage('en')" id="lang-en">🇺🇸 EN</button>
+            <button onclick="changeLanguage('es')" id="lang-es">🇪🇸 ES</button>
+        </div>
+        
+        <h1 data-i18n="title">PM2 LOG VIEWER</h1>
+        <p data-i18n="subtitle">Selecione os arquivos de log (.log) e aplique filtros.</p>
+        
+        <div class="toolbar">
+            <select id="fileSelect">
+                <option value="" data-i18n="selectFile">Selecione um arquivo...</option>
+            </select>
+            <button onclick="refreshFiles()" data-i18n="btnRefresh">🔄 Refresh</button>
+            <button onclick="clearSelections()" data-i18n="btnClear">🗑️ Limpar</button>
+            <button onclick="openConfigModal()" data-i18n="btnSettings">⚙️ Configurações</button>
+        </div>
+        
+        <div class="form-group">
+            <label for="search" data-i18n="labelSearch">Pesquisa (palavra-chave):</label>
+            <input type="text" id="search" data-i18n-placeholder="placeholderSearch" placeholder="Ex: error">
+        </div>
+        
+        <div class="form-group">
+            <label for="startTime" data-i18n="labelStartTime">Data/Hora inicial:</label>
+            <input type="datetime-local" id="startTime">
+        </div>
+        
+        <div class="form-group">
+            <label for="endTime" data-i18n="labelEndTime">Data/Hora final:</label>
+            <input type="datetime-local" id="endTime">
+        </div>
+        
+        <button onclick="loadAndFilterLogs()" data-i18n="btnLoadFilter">Carregar e Filtrar</button>
+        
+        <div id="status" style="margin-top: 10px; color: #4a5568; font-weight: bold;"></div>
+        
+        <div class="pagination" id="pagination"></div>
+        
+        <div id="results"></div>
+    </div>
+
+    <!-- Modal de Configurações -->
+    <div id="configModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 data-i18n="modalTitle">⚙️ Configurações</h2>
+                <span class="close" onclick="closeConfigModal()">&times;</span>
+            </div>
+            
+            <div class="config-group">
+                <label for="itemsPerPageConfig" data-i18n="labelLinesPerPage">Linhas por página:</label>
+                <input type="number" id="itemsPerPageConfig" min="10" max="500" value="50">
+            </div>
+            
+            <div class="config-group">
+                <label data-i18n="labelBgColor1">Cor de fundo (gradiente início):</label>
+                <div class="color-preview">
+                    <input type="color" id="bgColor1" value="#667eea">
+                    <span id="bgColor1Text">#667eea</span>
+                </div>
+            </div>
+            
+            <div class="config-group">
+                <label data-i18n="labelBgColor2">Cor de fundo (gradiente fim):</label>
+                <div class="color-preview">
+                    <input type="color" id="bgColor2" value="#764ba2">
+                    <span id="bgColor2Text">#764ba2</span>
+                </div>
+            </div>
+            
+            <div class="config-group">
+                <label data-i18n="labelButtonColor">Cor dos botões:</label>
+                <div class="color-preview">
+                    <input type="color" id="buttonColor" value="#667eea">
+                    <span id="buttonColorText">#667eea</span>
+                </div>
+            </div>
+            
+            <div class="config-group">
+                <label data-i18n="labelLogBgColor">Cor de fundo dos logs:</label>
+                <div class="color-preview">
+                    <input type="color" id="logBgColor" value="#f7fafc">
+                    <span id="logBgColorText">#f7fafc</span>
+                </div>
+            </div>
+            
+            <button onclick="saveConfig()" data-i18n="btnSaveConfig" style="width: 100%; margin-top: 10px;">Salvar Configurações</button>
+            <button onclick="resetConfig()" data-i18n="btnResetConfig" style="width: 100%; margin-top: 10px; background: #e2e8f0; color: #4a5568;">Restaurar Padrão</button>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let itemsPerPage = 50;
+        let filteredResults = [];
+        let currentSearchTerm = '';
+        let currentFile = '';
+        let logFiles = [];
+        let currentLanguage = 'pt';
+
+        // Traduções
+        const translations = {
+            pt: {
+                title: 'PM2 LOG VIEWER',
+                subtitle: 'Selecione os arquivos de log (.log) e aplique filtros.',
+                selectFile: 'Selecione um arquivo...',
+                btnRefresh: '🔄 Atualizar',
+                btnClear: '🗑️ Limpar',
+                btnSettings: '⚙️ Configurações',
+                labelSearch: 'Pesquisa (palavra-chave):',
+                placeholderSearch: 'Ex: error',
+                labelStartTime: 'Data/Hora inicial:',
+                labelEndTime: 'Data/Hora final:',
+                btnLoadFilter: 'Carregar e Filtrar',
+                modalTitle: '⚙️ Configurações',
+                labelLinesPerPage: 'Linhas por página:',
+                labelBgColor1: 'Cor de fundo (gradiente início):',
+                labelBgColor2: 'Cor de fundo (gradiente fim):',
+                labelButtonColor: 'Cor dos botões:',
+                labelLogBgColor: 'Cor de fundo dos logs:',
+                btnSaveConfig: 'Salvar Configurações',
+                btnResetConfig: 'Restaurar Padrão',
+                btnFirst: '« Primeiro',
+                btnPrev: '‹ Anterior',
+                btnNext: 'Próximo ›',
+                btnLast: 'Último »',
+                msgNoResults: 'Nenhum resultado encontrado.',
+                msgSelectFile: 'Selecione um arquivo.',
+                msgLoading: 'Carregando...',
+                msgProcessing: 'Processamento concluído. {0} linhas encontradas.',
+                msgError: 'Erro ao carregar dados.',
+                msgServerError: 'Erro ao carregar arquivos. Certifique-se de que o servidor está rodando.',
+                msgSelectionsCleared: 'Seleções limpas.',
+                msgFilesRefreshed: 'Lista de arquivos atualizada.',
+                msgRefreshing: 'Atualizando lista de arquivos...',
+                msgConfigSaved: 'Configurações salvas com sucesso!',
+                msgConfigReset: 'Configurações restauradas para o padrão!'
+            },
+            en: {
+                title: 'PM2 LOG VIEWER',
+                subtitle: 'Select log files (.log) and apply filters.',
+                selectFile: 'Select a file...',
+                btnRefresh: '🔄 Refresh',
+                btnClear: '🗑️ Clear',
+                btnSettings: '⚙️ Settings',
+                labelSearch: 'Search (keyword):',
+                placeholderSearch: 'Ex: error',
+                labelStartTime: 'Start Date/Time:',
+                labelEndTime: 'End Date/Time:',
+                btnLoadFilter: 'Load and Filter',
+                modalTitle: '⚙️ Settings',
+                labelLinesPerPage: 'Lines per page:',
+                labelBgColor1: 'Background color (gradient start):',
+                labelBgColor2: 'Background color (gradient end):',
+                labelButtonColor: 'Button color:',
+                labelLogBgColor: 'Log background color:',
+                btnSaveConfig: 'Save Settings',
+                btnResetConfig: 'Reset to Default',
+                btnFirst: '« First',
+                btnPrev: '‹ Previous',
+                btnNext: 'Next ›',
+                btnLast: 'Last »',
+                msgNoResults: 'No results found.',
+                msgSelectFile: 'Select a file.',
+                msgLoading: 'Loading...',
+                msgProcessing: 'Processing completed. {0} lines found.',
+                msgError: 'Error loading data.',
+                msgServerError: 'Error loading files. Make sure the server is running.',
+                msgSelectionsCleared: 'Selections cleared.',
+                msgFilesRefreshed: 'File list updated.',
+                msgRefreshing: 'Refreshing file list...',
+                msgConfigSaved: 'Settings saved successfully!',
+                msgConfigReset: 'Settings restored to default!'
+            },
+            es: {
+                title: 'PM2 LOG VIEWER',
+                subtitle: 'Seleccione archivos de registro (.log) y aplique filtros.',
+                selectFile: 'Seleccione un archivo...',
+                btnRefresh: '🔄 Actualizar',
+                btnClear: '🗑️ Limpiar',
+                btnSettings: '⚙️ Configuración',
+                labelSearch: 'Búsqueda (palabra clave):',
+                placeholderSearch: 'Ej: error',
+                labelStartTime: 'Fecha/Hora inicial:',
+                labelEndTime: 'Fecha/Hora final:',
+                btnLoadFilter: 'Cargar y Filtrar',
+                modalTitle: '⚙️ Configuración',
+                labelLinesPerPage: 'Líneas por página:',
+                labelBgColor1: 'Color de fondo (inicio del gradiente):',
+                labelBgColor2: 'Color de fondo (fin del gradiente):',
+                labelButtonColor: 'Color de botones:',
+                labelLogBgColor: 'Color de fondo de registros:',
+                btnSaveConfig: 'Guardar Configuración',
+                btnResetConfig: 'Restaurar Predeterminado',
+                btnFirst: '« Primero',
+                btnPrev: '‹ Anterior',
+                btnNext: 'Siguiente ›',
+                btnLast: 'Último »',
+                msgNoResults: 'No se encontraron resultados.',
+                msgSelectFile: 'Seleccione un archivo.',
+                msgLoading: 'Cargando...',
+                msgProcessing: 'Procesamiento completado. {0} líneas encontradas.',
+                msgError: 'Error al cargar datos.',
+                msgServerError: 'Error al cargar archivos. Asegúrese de que el servidor esté ejecutándose.',
+                msgSelectionsCleared: 'Selecciones limpiadas.',
+                msgFilesRefreshed: 'Lista de archivos actualizada.',
+                msgRefreshing: 'Actualizando lista de archivos...',
+                msgConfigSaved: '¡Configuración guardada con éxito!',
+                msgConfigReset: '¡Configuración restaurada a predeterminada!'
+            }
+        };
+
+        function t(key, ...params) {
+            let text = translations[currentLanguage][key] || key;
+            params.forEach((param, index) => {
+                text = text.replace(`{${index}}`, param);
+            });
+            return text;
+        }
+
+        function updateLanguage() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                el.textContent = t(el.getAttribute('data-i18n'));
+            });
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+            });
+            
+            // Atualizar botões de idioma
+            document.querySelectorAll('.language-selector button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById('lang-' + currentLanguage).classList.add('active');
+            
+            // Salvar preferência
+            localStorage.setItem('logViewerLanguage', currentLanguage);
+        }
+
+        function changeLanguage(lang) {
+            currentLanguage = lang;
+            updateLanguage();
+            
+            // Atualizar select se tiver conteúdo
+            if (logFiles.length > 0) {
+                const currentValue = document.getElementById('fileSelect').value;
+                populateFileSelect();
+                document.getElementById('fileSelect').value = currentValue;
+            }
+        }
+
+        async function init() {
+            // Carregar idioma salvo
+            const savedLang = localStorage.getItem('logViewerLanguage');
+            if (savedLang) {
+                currentLanguage = savedLang;
+            }
+            updateLanguage();
+            
+            await loadFiles();
+            loadSavedSettings();
+            loadConfig();
+            setupColorPreviewListeners();
+        }
+
+        async function loadFiles() {
+            try {
+                const response = await fetch('/files');
+                logFiles = await response.json();
+                populateFileSelect();
+            } catch (e) {
+                document.getElementById('status').textContent = t('msgServerError');
+            }
+        }
+
+        function populateFileSelect() {
+            const select = document.getElementById('fileSelect');
+            select.innerHTML = `<option value="">${t('selectFile')}</option>`;
+            logFiles.forEach(file => {
+                const option = document.createElement('option');
+                option.value = file;
+                option.textContent = file;
+                select.appendChild(option);
+            });
+            
+            // Adicionar listener
+            select.onchange = function() {
+                if (this.value) {
+                    currentFile = this.value;
+                    saveSettings();
+                }
+            };
+        }
+
+        function loadSavedSettings() {
+            const saved = localStorage.getItem('logViewerSettings');
+            if (saved) {
+                try {
+                    const settings = JSON.parse(saved);
+                    if (settings.file) {
+                        document.getElementById('fileSelect').value = settings.file;
+                        currentFile = settings.file;
+                    }
+                    if (settings.search) {
+                        document.getElementById('search').value = settings.search;
+                    }
+                    if (settings.startTime) {
+                        document.getElementById('startTime').value = settings.startTime;
+                    }
+                    if (settings.endTime) {
+                        document.getElementById('endTime').value = settings.endTime;
+                    }
+                } catch (e) {
+                    console.error('Erro ao carregar configurações salvas:', e);
+                }
+            }
+        }
+
+        function saveSettings() {
+            const settings = {
+                file: document.getElementById('fileSelect').value,
+                search: document.getElementById('search').value,
+                startTime: document.getElementById('startTime').value,
+                endTime: document.getElementById('endTime').value
+            };
+            localStorage.setItem('logViewerSettings', JSON.stringify(settings));
+        }
+
+        function clearSelections() {
+            localStorage.removeItem('logViewerSettings');
+            document.getElementById('fileSelect').value = '';
+            document.getElementById('search').value = '';
+            document.getElementById('startTime').value = '';
+            document.getElementById('endTime').value = '';
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('pagination').innerHTML = '';
+            document.getElementById('status').textContent = t('msgSelectionsCleared');
+            currentFile = '';
+            filteredResults = [];
+        }
+
+        async function refreshFiles() {
+            document.getElementById('status').textContent = t('msgRefreshing');
+            await loadFiles();
+            document.getElementById('status').textContent = t('msgFilesRefreshed');
+        }
+
+        function createTabs() {
+            // Removida - usando select agora
+        }
+
+        function selectFile(file) {
+            // Removida - usando select agora
+        }
+
+        function openConfigModal() {
+            document.getElementById('configModal').style.display = 'block';
+        }
+
+        function closeConfigModal() {
+            document.getElementById('configModal').style.display = 'none';
+        }
+
+        function setupColorPreviewListeners() {
+            const colorInputs = ['bgColor1', 'bgColor2', 'buttonColor', 'logBgColor'];
+            colorInputs.forEach(id => {
+                const input = document.getElementById(id);
+                const text = document.getElementById(id + 'Text');
+                input.addEventListener('input', () => {
+                    text.textContent = input.value;
+                });
+            });
+        }
+
+        function loadConfig() {
+            const config = localStorage.getItem('logViewerConfig');
+            if (config) {
+                try {
+                    const cfg = JSON.parse(config);
+                    itemsPerPage = cfg.itemsPerPage || 50;
+                    document.getElementById('itemsPerPageConfig').value = itemsPerPage;
+                    
+                    if (cfg.bgColor1) {
+                        document.getElementById('bgColor1').value = cfg.bgColor1;
+                        document.getElementById('bgColor1Text').textContent = cfg.bgColor1;
+                    }
+                    if (cfg.bgColor2) {
+                        document.getElementById('bgColor2').value = cfg.bgColor2;
+                        document.getElementById('bgColor2Text').textContent = cfg.bgColor2;
+                    }
+                    if (cfg.buttonColor) {
+                        document.getElementById('buttonColor').value = cfg.buttonColor;
+                        document.getElementById('buttonColorText').textContent = cfg.buttonColor;
+                    }
+                    if (cfg.logBgColor) {
+                        document.getElementById('logBgColor').value = cfg.logBgColor;
+                        document.getElementById('logBgColorText').textContent = cfg.logBgColor;
+                    }
+                    
+                    applyConfig(cfg);
+                } catch (e) {
+                    console.error('Erro ao carregar configurações:', e);
+                }
+            }
+        }
+
+        function saveConfig() {
+            const config = {
+                itemsPerPage: parseInt(document.getElementById('itemsPerPageConfig').value),
+                bgColor1: document.getElementById('bgColor1').value,
+                bgColor2: document.getElementById('bgColor2').value,
+                buttonColor: document.getElementById('buttonColor').value,
+                logBgColor: document.getElementById('logBgColor').value
+            };
+            
+            itemsPerPage = config.itemsPerPage;
+            localStorage.setItem('logViewerConfig', JSON.stringify(config));
+            applyConfig(config);
+            closeConfigModal();
+            
+            // Atualizar paginação se houver resultados
+            if (filteredResults.length > 0) {
+                displayPage();
+            }
+            
+            alert(t('msgConfigSaved'));
+        }
+
+        function applyConfig(config) {
+            document.body.style.background = `linear-gradient(135deg, ${config.bgColor1 || '#667eea'} 0%, ${config.bgColor2 || '#764ba2'} 100%)`;
+            
+            const buttons = document.querySelectorAll('button:not(.pagination button)');
+            buttons.forEach(btn => {
+                if (!btn.style.background || btn.style.background.includes('rgb')) {
+                    btn.style.background = config.buttonColor || '#667eea';
+                }
+            });
+            
+            const results = document.getElementById('results');
+            results.style.background = config.logBgColor || '#f7fafc';
+        }
+
+        function resetConfig() {
+            const defaultConfig = {
+                itemsPerPage: 50,
+                bgColor1: '#667eea',
+                bgColor2: '#764ba2',
+                buttonColor: '#667eea',
+                logBgColor: '#f7fafc'
+            };
+            
+            localStorage.setItem('logViewerConfig', JSON.stringify(defaultConfig));
+            
+            document.getElementById('itemsPerPageConfig').value = defaultConfig.itemsPerPage;
+            document.getElementById('bgColor1').value = defaultConfig.bgColor1;
+            document.getElementById('bgColor1Text').textContent = defaultConfig.bgColor1;
+            document.getElementById('bgColor2').value = defaultConfig.bgColor2;
+            document.getElementById('bgColor2Text').textContent = defaultConfig.bgColor2;
+            document.getElementById('buttonColor').value = defaultConfig.buttonColor;
+            document.getElementById('buttonColorText').textContent = defaultConfig.buttonColor;
+            document.getElementById('logBgColor').value = defaultConfig.logBgColor;
+            document.getElementById('logBgColorText').textContent = defaultConfig.logBgColor;
+            
+            itemsPerPage = defaultConfig.itemsPerPage;
+            applyConfig(defaultConfig);
+            
+            if (filteredResults.length > 0) {
+                displayPage();
+            }
+            
+            alert(t('msgConfigReset'));
+        }
+
+        // Fechar modal ao clicar fora dele
+        window.onclick = function(event) {
+            const modal = document.getElementById('configModal');
+            if (event.target == modal) {
+                closeConfigModal();
+            }
+        }
+
+        async function loadAndFilterLogs() {
+            if (!currentFile) {
+                alert(t('msgSelectFile'));
+                return;
+            }
+            
+            // Salvar configurações
+            saveSettings();
+            
+            currentSearchTerm = document.getElementById('search').value.toLowerCase();
+            let startTime = document.getElementById('startTime').value;
+            let endTime = document.getElementById('endTime').value;
+            
+            // Normalizar formato
+            if (startTime) startTime = startTime.replace('T', ' ') + ':00';
+            if (endTime) endTime = endTime.replace('T', ' ') + ':00';
+            
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = 'Carregando...';
+
+            const params = new URLSearchParams({
+                search: currentSearchTerm,
+                start: startTime,
+                end: endTime
+            });
+
+            try {
+                const response = await fetch(`/file/${currentFile}?${params}`);
+                filteredResults = await response.json();
+                statusDiv.textContent = t('msgProcessing', filteredResults.length);
+                currentPage = 1;
+                displayPage();
+            } catch (e) {
+                statusDiv.textContent = t('msgError');
+            }
+        }
+
+        function displayPage() {
+            const resultsDiv = document.getElementById('results');
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            const pageItems = filteredResults.slice(startIndex, endIndex);
+
+            let html = '';
+            if (pageItems.length === 0) {
+                html = `<div>${t('msgNoResults')}</div>`;
+            } else {
+                html = pageItems.map(line => {
+                    const datetimeMatch = line.match(/\[(\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})\]/);
+                    let displayLine;
+                    if (datetimeMatch) {
+                        const datetime = datetimeMatch[1];
+                        let rest = line.replace(datetimeMatch[0], '').trim();
+                        // Colorir status
+                        rest = rest.replace(/^(INFO|ERROR|WARN|WARNING|DEBUG|FATAL)\s/, (match, status) => {
+                            const colors = { INFO: '#3b82f6', ERROR: '#ef4444', WARN: '#f97316', WARNING: '#f97316', DEBUG: '#22c55e', FATAL: '#991b1b' };
+                            return `<span style="color: ${colors[status] || 'black'}; font-weight: bold;">${status}</span> `;
+                        });
+                        displayLine = `[<strong>${datetime}</strong>] ${rest}`;
+                    } else {
+                        displayLine = line;
+                    }
+                    if (currentSearchTerm) {
+                        const regex = new RegExp(`(${currentSearchTerm})`, 'gi');
+                        displayLine = displayLine.replace(regex, '<mark>$1</mark>');
+                    }
+                    return `<div>${displayLine}</div>`;
+                }).join('');
+            }
+
+            resultsDiv.innerHTML = html;
+            updatePagination();
+        }
+
+        function updatePagination() {
+            const totalPages = Math.ceil(filteredResults.length / itemsPerPage);
+            const paginationDiv = document.getElementById('pagination');
+            paginationDiv.innerHTML = '';
+
+            if (totalPages === 0) return;
+
+            // Botão Primeiro
+            const firstBtn = document.createElement('button');
+            firstBtn.textContent = t('btnFirst');
+            firstBtn.disabled = currentPage === 1;
+            firstBtn.onclick = () => goToPage(1);
+            paginationDiv.appendChild(firstBtn);
+
+            // Botão Anterior
+            const prevBtn = document.createElement('button');
+            prevBtn.textContent = t('btnPrev');
+            prevBtn.disabled = currentPage === 1;
+            prevBtn.onclick = () => goToPage(currentPage - 1);
+            paginationDiv.appendChild(prevBtn);
+
+            // Números das páginas
+            const maxVisible = 7;
+            let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+            let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+            
+            if (endPage - startPage < maxVisible - 1) {
+                startPage = Math.max(1, endPage - maxVisible + 1);
+            }
+
+            // Mostrar página 1 se não estiver visível
+            if (startPage > 1) {
+                const btn = document.createElement('button');
+                btn.textContent = '1';
+                btn.onclick = () => goToPage(1);
+                paginationDiv.appendChild(btn);
+                
+                if (startPage > 2) {
+                    const ellipsis = document.createElement('span');
+                    ellipsis.className = 'ellipsis';
+                    ellipsis.textContent = '...';
+                    paginationDiv.appendChild(ellipsis);
+                }
+            }
+
+            // Páginas do meio
+            for (let i = startPage; i <= endPage; i++) {
+                const btn = document.createElement('button');
+                btn.textContent = i;
+                if (i === currentPage) {
+                    btn.className = 'active';
+                }
+                btn.onclick = () => goToPage(i);
+                paginationDiv.appendChild(btn);
+            }
+
+            // Mostrar última página se não estiver visível
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    const ellipsis = document.createElement('span');
+                    ellipsis.className = 'ellipsis';
+                    ellipsis.textContent = '...';
+                    paginationDiv.appendChild(ellipsis);
+                }
+                
+                const btn = document.createElement('button');
+                btn.textContent = totalPages;
+                btn.onclick = () => goToPage(totalPages);
+                paginationDiv.appendChild(btn);
+            }
+
+            // Botão Próximo
+            const nextBtn = document.createElement('button');
+            nextBtn.textContent = t('btnNext');
+            nextBtn.disabled = currentPage === totalPages;
+            nextBtn.onclick = () => goToPage(currentPage + 1);
+            paginationDiv.appendChild(nextBtn);
+
+            // Botão Último
+            const lastBtn = document.createElement('button');
+            lastBtn.textContent = t('btnLast');
+            lastBtn.disabled = currentPage === totalPages;
+            lastBtn.onclick = () => goToPage(totalPages);
+            paginationDiv.appendChild(lastBtn);
+        }
+
+        function goToPage(page) {
+            currentPage = page;
+            displayPage();
+        }
+
+        function changePage(direction) {
+            currentPage += direction;
+            displayPage();
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
