@@ -17,11 +17,11 @@ COPY index.html .
 RUN mkdir -p /app/logs
 
 # Expose port
-EXPOSE 8000
+EXPOSE 9020
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:9020')" || exit 1
 
 # Run the server
 CMD ["python", "server.py"]
