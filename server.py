@@ -56,7 +56,7 @@ class LogServer(SimpleHTTPRequestHandler):
             super().do_GET()
 
 if __name__ == '__main__':
-    server = HTTPServer(('0.0.0.0', 8000), LogServer)
-    print("Servidor rodando em http://0.0.0.0:8000")
+    server = HTTPServer(('localhost', 9020), LogServer)
+    print("Servidor rodando em http://localhost:9020")
     print("Abra index.html no navegador.")
     server.serve_forever()
