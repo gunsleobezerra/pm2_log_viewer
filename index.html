@@ -262,6 +262,7 @@
         <button onclick="loadAndFilterLogs()" data-i18n="btnLoadFilter">Carregar e Filtrar</button>
         
         <div id="status" style="margin-top: 10px; color: #4a5568; font-weight: bold;"></div>
+        <div id="sortInfo" style="margin-top: 5px; color: #718096; font-size: 12px; font-style: italic;"></div>
         
         <div class="pagination" id="pagination"></div>
         
@@ -363,7 +364,8 @@
                 msgFilesRefreshed: 'Lista de arquivos atualizada.',
                 msgRefreshing: 'Atualizando lista de arquivos...',
                 msgConfigSaved: 'Configurações salvas com sucesso!',
-                msgConfigReset: 'Configurações restauradas para o padrão!'
+                msgConfigReset: 'Configurações restauradas para o padrão!',
+                msgSortInfo: 'Exibindo logs em ordem cronológica reversa (mais recentes primeiro)'
             },
             en: {
                 title: 'PM2 LOG VIEWER',
@@ -399,7 +401,8 @@
                 msgFilesRefreshed: 'File list updated.',
                 msgRefreshing: 'Refreshing file list...',
                 msgConfigSaved: 'Settings saved successfully!',
-                msgConfigReset: 'Settings restored to default!'
+                msgConfigReset: 'Settings restored to default!',
+                msgSortInfo: 'Displaying logs in reverse chronological order (most recent first)'
             },
             es: {
                 title: 'PM2 LOG VIEWER',
@@ -435,7 +438,8 @@
                 msgFilesRefreshed: 'Lista de archivos actualizada.',
                 msgRefreshing: 'Actualizando lista de archivos...',
                 msgConfigSaved: '¡Configuración guardada con éxito!',
-                msgConfigReset: '¡Configuración restaurada a predeterminada!'
+                msgConfigReset: '¡Configuración restaurada a predeterminada!',
+                msgSortInfo: 'Mostrando registros en orden cronológico inverso (más recientes primero)'
             }
         };
 
@@ -562,6 +566,7 @@
             document.getElementById('endTime').value = '';
             document.getElementById('results').innerHTML = '';
             document.getElementById('pagination').innerHTML = '';
+            document.getElementById('sortInfo').textContent = '';
             document.getElementById('status').textContent = t('msgSelectionsCleared');
             currentFile = '';
             filteredResults = [];
@@ -720,27 +725,37 @@
             let startTime = document.getElementById('startTime').value;
             let endTime = document.getElementById('endTime').value;
             
-            // Normalizar formato
-            if (startTime) startTime = startTime.replace('T', ' ') + ':00';
-            if (endTime) endTime = endTime.replace('T', ' ') + ':00';
-            
             const statusDiv = document.getElementById('status');
-            statusDiv.textContent = 'Carregando...';
+            statusDiv.textContent = t('msgLoading');
 
             const params = new URLSearchParams({
                 search: currentSearchTerm,
-                start: startTime,
-                end: endTime
+                start: startTime || '',
+                end: endTime || ''
             });
 
             try {
                 const response = await fetch(`/file/${currentFile}?${params}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
                 filteredResults = await response.json();
                 statusDiv.textContent = t('msgProcessing', filteredResults.length);
+                
+                // Mostrar informação sobre a ordem de exibição
+                const sortInfoDiv = document.getElementById('sortInfo');
+                if (filteredResults.length > 0) {
+                    sortInfoDiv.textContent = t('msgSortInfo');
+                } else {
+                    sortInfoDiv.textContent = '';
+                }
+                
                 currentPage = 1;
                 displayPage();
             } catch (e) {
-                statusDiv.textContent = t('msgError');
+                console.error('Erro ao carregar logs:', e);
+                statusDiv.textContent = t('msgError') + ': ' + e.message;
+                document.getElementById('sortInfo').textContent = '';
             }
         }
 

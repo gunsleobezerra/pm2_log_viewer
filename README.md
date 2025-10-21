@@ -45,8 +45,8 @@ docker build -t pm2-log-viewer .
 # Execute o container
 docker run -d \
   --name pm2-log-viewer \
-  -p 8001:8001 \
-  -v $(pwd)/../:/app/logs:ro \
+  -p 8102:8001 \
+  -v /root/.pm2/logs:/app/logs:ro \
   pm2-log-viewer
 ```
 
@@ -64,7 +64,7 @@ python server.py
 
 Após iniciar o container, acesse:
 ```
-http://localhost:8001
+http://localhost:8102
 ```
 
 ## 📁 Estrutura do Projeto
@@ -80,40 +80,53 @@ pm2_log_viewer/
 
 ## ⚙️ Configurações
 
-### Arquivo de Configuração (.env.viewer)
+### Configuração Básica
 
-O projeto suporta configuração através de arquivo `.env.viewer`. Para usar:
+O projeto usa uma configuração simples e direta através do arquivo `compose.yml`. As configurações principais são:
 
-```bash
-# Copie o arquivo de exemplo
-cp .env.viewer.example .env.viewer
+- **Porta**: 8102 (externa) → 8001 (interna)
+- **Logs**: `/root/.pm2/logs` montado em `/app/logs` (somente leitura)
+- **Timezone**: America/Sao_Paulo
+- **Container**: pm2-log-viewer
+- **Restart**: unless-stopped
 
-# Edite as configurações conforme necessário
-nano .env.viewer
+### Personalização do compose.yml
+
+Para alterar as configurações, edite diretamente o arquivo `compose.yml`:
+
+```yaml
+services:
+  pm2-log-viewer:
+    ports:
+      - "PORTA_EXTERNA:8001"  # Altere PORTA_EXTERNA
+    volumes:
+      - /caminho/para/logs:/app/logs:ro  # Altere o caminho dos logs
+    environment:
+      - TZ=Seu/Timezone  # Altere o timezone
 ```
-
-### Principais Variáveis de Ambiente
-
-- `PORT`: Porta do servidor (padrão: 8001)
-- `EXTERNAL_PORT`: Porta externa para acesso (padrão: 8001)
-- `TZ`: Timezone (padrão: America/Sao_Paulo)
-- `CONTAINER_NAME`: Nome do container (padrão: pm2-log-viewer)
-- `LOGS_HOST_PATH`: Caminho dos logs no host (padrão: ../)
-- `LOGS_CONTAINER_PATH`: Caminho dos logs no container (padrão: /app/logs)
-- `RESTART_POLICY`: Política de restart (padrão: unless-stopped)
-- `NETWORK_NAME`: Nome da rede Docker (padrão: log-viewer-network)
-- `NETWORK_DRIVER`: Driver da rede (padrão: bridge)
 
 ### Configuração de Volumes
 
-O Docker Compose monta automaticamente o diretório configurado em `LOGS_HOST_PATH` como `LOGS_CONTAINER_PATH` no container em modo somente leitura.
-
-Para personalizar, edite o arquivo `.env.viewer`:
+Por padrão, o sistema monta `/root/.pm2/logs` do host no container. Para usar um diretório diferente:
 
 ```bash
-# Exemplo: logs em diretório específico
-LOGS_HOST_PATH=/var/log/pm2
-LOGS_CONTAINER_PATH=/app/logs
+# Edite compose.yml e altere a linha:
+volumes:
+  - /seu/diretorio/de/logs:/app/logs:ro
+```
+
+### Mudança de Porta
+
+Para alterar a porta de acesso, edite o arquivo `compose.yml`:
+
+```yaml
+ports:
+  - "NOVA_PORTA:8001"  # Substitua NOVA_PORTA pela porta desejada
+```
+
+Depois reinicie o container:
+```bash
+docker compose down && docker compose up -d
 ```
 
 ## 🎨 Funcionalidades
@@ -148,8 +161,8 @@ LOGS_CONTAINER_PATH=/app/logs
 # Verifique os logs
 docker compose logs
 
-# Verifique se a porta 8001 está disponível
-sudo lsof -i :8001
+# Verifique se a porta 8102 está disponível
+sudo lsof -i :8102
 ```
 
 ### Logs não aparecem
