@@ -45,7 +45,7 @@ docker build -t pm2-log-viewer .
 # Execute o container
 docker run -d \
   --name pm2-log-viewer \
-  -p 8000:8000 \
+  -p 8001:8001 \
   -v $(pwd)/../:/app/logs:ro \
   pm2-log-viewer
 ```
@@ -57,14 +57,14 @@ docker run -d \
 python server.py
 
 # Abra no navegador
-# http://localhost:8000
+# http://localhost:8001
 ```
 
 ## 🌐 Acesso
 
 Após iniciar o container, acesse:
 ```
-http://localhost:8000
+http://localhost:8001
 ```
 
 ## 📁 Estrutura do Projeto
@@ -94,8 +94,8 @@ nano .env.viewer
 
 ### Principais Variáveis de Ambiente
 
-- `PORT`: Porta do servidor (padrão: 8000)
-- `EXTERNAL_PORT`: Porta externa para acesso (padrão: 8000)
+- `PORT`: Porta do servidor (padrão: 8001)
+- `EXTERNAL_PORT`: Porta externa para acesso (padrão: 8001)
 - `TZ`: Timezone (padrão: America/Sao_Paulo)
 - `CONTAINER_NAME`: Nome do container (padrão: pm2-log-viewer)
 - `LOGS_HOST_PATH`: Caminho dos logs no host (padrão: ../)
@@ -148,8 +148,8 @@ LOGS_CONTAINER_PATH=/app/logs
 # Verifique os logs
 docker compose logs
 
-# Verifique se a porta 8000 está disponível
-sudo lsof -i :8000
+# Verifique se a porta 8001 está disponível
+sudo lsof -i :8001
 ```
 
 ### Logs não aparecem

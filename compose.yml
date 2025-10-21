@@ -3,24 +3,22 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ${CONTAINER_NAME:-pm2-log-viewer}
+    container_name: pm2-log-viewer
     ports:
-      - "${EXTERNAL_PORT:-8000}:${PORT:-8000}"
+      - "8102:8001"
     volumes:
       # Monte o diretório de logs do host no container
-      - ${LOGS_HOST_PATH:-../}:${LOGS_CONTAINER_PATH:-/app/logs}:ro
+      - /root/.pm2/logs:/app/logs:ro
     environment:
-      - PORT=${PORT:-8000}
-      - TZ=${TZ:-America/Sao_Paulo}
-      - LOG_DIR=${LOGS_CONTAINER_PATH:-/app/logs}
-    restart: ${RESTART_POLICY:-unless-stopped}
+      - PORT=8001
+      - TZ=America/Sao_Paulo
+      - LOG_DIR=/app/logs
+    restart: unless-stopped
     networks:
       - log-viewer-network
     labels:
       - "com.docker.compose.project=pm2-log-viewer"
       - "description=PM2 Log Viewer - Web interface for viewing PM2 logs"
-    env_file:
-      - .env.viewer
 
 networks:
   log-viewer-network:
