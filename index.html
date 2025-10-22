@@ -222,6 +222,15 @@
             height: 40px;
             cursor: pointer;
         }
+        .auto-refresh-active {
+            background: #10b981 !important;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -242,6 +251,20 @@
             <button onclick="refreshFiles()" data-i18n="btnRefresh">🔄 Refresh</button>
             <button onclick="clearSelections()" data-i18n="btnClear">🗑️ Limpar</button>
             <button onclick="openConfigModal()" data-i18n="btnSettings">⚙️ Configurações</button>
+        </div>
+        
+        <div class="toolbar">
+            <select id="autoRefreshSelect">
+                <option value="0" data-i18n="autoRefreshOff">Auto-refresh desabilitado</option>
+                <option value="5" data-i18n="autoRefresh5s">A cada 5 segundos</option>
+                <option value="10" data-i18n="autoRefresh10s">A cada 10 segundos</option>
+                <option value="30" data-i18n="autoRefresh30s">A cada 30 segundos</option>
+                <option value="60" data-i18n="autoRefresh1m">A cada 1 minuto</option>
+                <option value="300" data-i18n="autoRefresh5m">A cada 5 minutos</option>
+                <option value="600" data-i18n="autoRefresh10m">A cada 10 minutos</option>
+            </select>
+            <button id="toggleAutoRefresh" onclick="toggleAutoRefresh()" data-i18n="btnToggleAutoRefresh">▶️ Iniciar</button>
+            <span id="autoRefreshStatus" style="margin-left: 10px; font-size: 12px; color: #666;"></span>
         </div>
         
         <div class="form-group">
@@ -327,6 +350,12 @@
         let currentFile = '';
         let logFiles = [];
         let currentLanguage = 'pt';
+        
+        // Variáveis para auto-refresh
+        let autoRefreshInterval = null;
+        let autoRefreshCountdown = null;
+        let isAutoRefreshActive = false;
+        let countdownSeconds = 0;
 
         // Traduções
         const translations = {
@@ -365,6 +394,17 @@
                 msgRefreshing: 'Atualizando lista de arquivos...',
                 msgConfigSaved: 'Configurações salvas com sucesso!',
                 msgConfigReset: 'Configurações restauradas para o padrão!',
+                autoRefreshOff: 'Auto-refresh desabilitado',
+                autoRefresh5s: 'A cada 5 segundos',
+                autoRefresh10s: 'A cada 10 segundos',
+                autoRefresh30s: 'A cada 30 segundos',
+                autoRefresh1m: 'A cada 1 minuto',
+                autoRefresh5m: 'A cada 5 minutos',
+                autoRefresh10m: 'A cada 10 minutos',
+                btnToggleAutoRefresh: '▶️ Iniciar',
+                btnStopAutoRefresh: '⏸️ Parar',
+                autoRefreshRunning: 'Auto-refresh ativo - próxima atualização em {0}s',
+                autoRefreshStopped: 'Auto-refresh parado',
                 msgSortInfo: 'Exibindo logs em ordem cronológica reversa (mais recentes primeiro)'
             },
             en: {
@@ -402,6 +442,17 @@
                 msgRefreshing: 'Refreshing file list...',
                 msgConfigSaved: 'Settings saved successfully!',
                 msgConfigReset: 'Settings restored to default!',
+                autoRefreshOff: 'Auto-refresh disabled',
+                autoRefresh5s: 'Every 5 seconds',
+                autoRefresh10s: 'Every 10 seconds',
+                autoRefresh30s: 'Every 30 seconds',
+                autoRefresh1m: 'Every 1 minute',
+                autoRefresh5m: 'Every 5 minutes',
+                autoRefresh10m: 'Every 10 minutes',
+                btnToggleAutoRefresh: '▶️ Start',
+                btnStopAutoRefresh: '⏸️ Stop',
+                autoRefreshRunning: 'Auto-refresh active - next update in {0}s',
+                autoRefreshStopped: 'Auto-refresh stopped',
                 msgSortInfo: 'Displaying logs in reverse chronological order (most recent first)'
             },
             es: {
@@ -439,6 +490,17 @@
                 msgRefreshing: 'Actualizando lista de archivos...',
                 msgConfigSaved: '¡Configuración guardada con éxito!',
                 msgConfigReset: '¡Configuración restaurada a predeterminada!',
+                autoRefreshOff: 'Auto-actualización deshabilitada',
+                autoRefresh5s: 'Cada 5 segundos',
+                autoRefresh10s: 'Cada 10 segundos',
+                autoRefresh30s: 'Cada 30 segundos',
+                autoRefresh1m: 'Cada 1 minuto',
+                autoRefresh5m: 'Cada 5 minutos',
+                autoRefresh10m: 'Cada 10 minutos',
+                btnToggleAutoRefresh: '▶️ Iniciar',
+                btnStopAutoRefresh: '⏸️ Parar',
+                autoRefreshRunning: 'Auto-actualización activa - próxima actualización en {0}s',
+                autoRefreshStopped: 'Auto-actualización detenida',
                 msgSortInfo: 'Mostrando registros en orden cronológico inverso (más recientes primero)'
             }
         };
@@ -493,6 +555,8 @@
             loadSavedSettings();
             loadConfig();
             setupColorPreviewListeners();
+            setupAutoRefreshSelect();
+            loadAutoRefreshState();
         }
 
         async function loadFiles() {
@@ -520,6 +584,11 @@
                 if (this.value) {
                     currentFile = this.value;
                     saveSettings();
+                    
+                    // Parar auto-refresh se estiver ativo ao trocar de arquivo
+                    if (isAutoRefreshActive) {
+                        stopAutoRefresh();
+                    }
                 }
             };
         }
@@ -559,6 +628,11 @@
         }
 
         function clearSelections() {
+            // Parar auto-refresh se estiver ativo
+            if (isAutoRefreshActive) {
+                stopAutoRefresh();
+            }
+            
             localStorage.removeItem('logViewerSettings');
             document.getElementById('fileSelect').value = '';
             document.getElementById('search').value = '';
@@ -740,7 +814,7 @@
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 filteredResults = await response.json();
-                statusDiv.textContent = t('msgProcessing', filteredResults.length);
+                statusDiv.innerHTML = `${t('msgProcessing', filteredResults.length)} <span style="color: #666; font-size: 12px;">(📅 Logs mais recentes primeiro)</span>`;
                 
                 // Mostrar informação sobre a ordem de exibição
                 const sortInfoDiv = document.getElementById('sortInfo');
@@ -769,25 +843,71 @@
             if (pageItems.length === 0) {
                 html = `<div>${t('msgNoResults')}</div>`;
             } else {
-                html = pageItems.map(line => {
-                    const datetimeMatch = line.match(/\[(\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})\]/);
-                    let displayLine;
+                // Reverter a ordem dos itens da página para que o log mais antigo fique no topo
+                // e o mais recente no final da página (ordem cronológica correta)
+                const reversedPageItems = [...pageItems].reverse();
+                
+                html = reversedPageItems.map(line => {
+                    let displayLine = line;
+                    
+                    // Detectar e formatar diferentes tipos de timestamp
+                    // Formato: [DD-MM-YYYY HH:MM:SS]
+                    let datetimeMatch = line.match(/\[(\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2})\]/);
                     if (datetimeMatch) {
                         const datetime = datetimeMatch[1];
                         let rest = line.replace(datetimeMatch[0], '').trim();
-                        // Colorir status
-                        rest = rest.replace(/^(INFO|ERROR|WARN|WARNING|DEBUG|FATAL)\s/, (match, status) => {
-                            const colors = { INFO: '#3b82f6', ERROR: '#ef4444', WARN: '#f97316', WARNING: '#f97316', DEBUG: '#22c55e', FATAL: '#991b1b' };
-                            return `<span style="color: ${colors[status] || 'black'}; font-weight: bold;">${status}</span> `;
-                        });
-                        displayLine = `[<strong>${datetime}</strong>] ${rest}`;
+                        displayLine = `[<strong style="color: #2563eb;">${datetime}</strong>] ${rest}`;
                     } else {
-                        displayLine = line;
+                        // Formato: M/D/YYYY H:MM:SS AM/PM (frontend logs)
+                        datetimeMatch = line.match(/(\d{1,2}\/\d{1,2}\/\d{4} \d{1,2}:\d{2}:\d{2} (?:AM|PM))/);
+                        if (datetimeMatch) {
+                            const datetime = datetimeMatch[1];
+                            displayLine = line.replace(datetime, `<strong style="color: #2563eb;">${datetime}</strong>`);
+                        } else {
+                            // Formato: Day, DD Mon YYYY HH:MM:SS GMT
+                            datetimeMatch = line.match(/(\w{3}, \d{2} \w{3} \d{4} \d{2}:\d{2}:\d{2} GMT)/);
+                            if (datetimeMatch) {
+                                const datetime = datetimeMatch[1];
+                                displayLine = line.replace(datetime, `<strong style="color: #2563eb;">${datetime}</strong>`);
+                            } else {
+                                // Formato JSON - destacar apenas o timestamp
+                                try {
+                                    if (line.trim().startsWith('{')) {
+                                        const jsonMatch = line.match(/"time":(\d+)/);
+                                        if (jsonMatch) {
+                                            const timestamp = parseInt(jsonMatch[1]);
+                                            const date = new Date(timestamp);
+                                            const formattedDate = date.toLocaleString('pt-BR');
+                                            displayLine = line.replace(/"time":\d+/, `"time":<strong style="color: #2563eb;">"${formattedDate}"</strong>`);
+                                        }
+                                    }
+                                } catch (e) {
+                                    // Manter linha original se não conseguir parsear
+                                }
+                            }
+                        }
                     }
+                    
+                    // Colorir níveis de log (INFO, ERROR, etc.)
+                    displayLine = displayLine.replace(/\b(INFO|ERROR|WARN|WARNING|DEBUG|FATAL|HTTP)\b/g, (match, status) => {
+                        const colors = { 
+                            INFO: '#3b82f6', 
+                            ERROR: '#ef4444', 
+                            WARN: '#f97316', 
+                            WARNING: '#f97316', 
+                            DEBUG: '#22c55e', 
+                            FATAL: '#991b1b',
+                            HTTP: '#8b5cf6'
+                        };
+                        return `<span style="color: ${colors[status] || '#4a5568'}; font-weight: bold;">${status}</span>`;
+                    });
+                    
+                    // Destacar termo de busca
                     if (currentSearchTerm) {
-                        const regex = new RegExp(`(${currentSearchTerm})`, 'gi');
+                        const regex = new RegExp(`(${currentSearchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
                         displayLine = displayLine.replace(regex, '<mark>$1</mark>');
                     }
+                    
                     return `<div>${displayLine}</div>`;
                 }).join('');
             }
@@ -890,6 +1010,122 @@
         function changePage(direction) {
             currentPage += direction;
             displayPage();
+        }
+
+        function toggleAutoRefresh() {
+            if (isAutoRefreshActive) {
+                stopAutoRefresh();
+            } else {
+                startAutoRefresh();
+            }
+        }
+
+        function startAutoRefresh() {
+            const intervalSeconds = parseInt(document.getElementById('autoRefreshSelect').value);
+            
+            if (intervalSeconds === 0) {
+                alert('Selecione um intervalo para o auto-refresh');
+                return;
+            }
+
+            if (!currentFile) {
+                alert(t('msgSelectFile'));
+                return;
+            }
+
+            isAutoRefreshActive = true;
+            countdownSeconds = intervalSeconds;
+            
+            // Atualizar interface
+            const toggleBtn = document.getElementById('toggleAutoRefresh');
+            toggleBtn.textContent = '⏸️ Parar';
+            toggleBtn.setAttribute('data-i18n', 'btnStopAutoRefresh');
+            toggleBtn.classList.add('auto-refresh-active');
+            
+            // Iniciar countdown
+            updateCountdownDisplay();
+            autoRefreshCountdown = setInterval(() => {
+                countdownSeconds--;
+                updateCountdownDisplay();
+                
+                if (countdownSeconds <= 0) {
+                    // Fazer refresh
+                    loadAndFilterLogs().then(() => {
+                        // Reiniciar countdown
+                        countdownSeconds = intervalSeconds;
+                    });
+                }
+            }, 1000);
+        }
+
+        function stopAutoRefresh() {
+            isAutoRefreshActive = false;
+            
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+            
+            if (autoRefreshCountdown) {
+                clearInterval(autoRefreshCountdown);
+                autoRefreshCountdown = null;
+            }
+            
+            // Atualizar interface
+            const toggleBtn = document.getElementById('toggleAutoRefresh');
+            toggleBtn.textContent = '▶️ Iniciar';
+            toggleBtn.setAttribute('data-i18n', 'btnToggleAutoRefresh');
+            toggleBtn.classList.remove('auto-refresh-active');
+            
+            document.getElementById('autoRefreshStatus').textContent = t('autoRefreshStopped');
+            
+            // Salvar estado
+            localStorage.setItem('autoRefreshActive', 'false');
+        }
+
+        function updateCountdownDisplay() {
+            const statusSpan = document.getElementById('autoRefreshStatus');
+            if (isAutoRefreshActive) {
+                statusSpan.textContent = t('autoRefreshRunning', countdownSeconds);
+            } else {
+                statusSpan.textContent = '';
+            }
+        }
+
+        function setupAutoRefreshSelect() {
+            const select = document.getElementById('autoRefreshSelect');
+            
+            // Carregar configuração salva
+            const savedInterval = localStorage.getItem('autoRefreshInterval');
+            if (savedInterval) {
+                select.value = savedInterval;
+            }
+            
+            // Listener para mudanças
+            select.addEventListener('change', function() {
+                localStorage.setItem('autoRefreshInterval', this.value);
+                
+                // Se auto-refresh está ativo, reiniciar com novo intervalo
+                if (isAutoRefreshActive) {
+                    stopAutoRefresh();
+                    if (parseInt(this.value) > 0) {
+                        setTimeout(startAutoRefresh, 100); // Pequeno delay para garantir que parou
+                    }
+                }
+            });
+        }
+
+        function loadAutoRefreshState() {
+            // Carregar estado salvo do auto-refresh
+            const wasActive = localStorage.getItem('autoRefreshActive') === 'true';
+            const savedInterval = localStorage.getItem('autoRefreshInterval');
+            
+            if (savedInterval) {
+                document.getElementById('autoRefreshSelect').value = savedInterval;
+            }
+            
+            // Não restaurar automaticamente o auto-refresh ativo por segurança
+            // O usuário deve reativar manualmente
         }
 
         window.onload = init;
