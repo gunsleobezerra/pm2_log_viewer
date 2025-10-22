@@ -25,6 +25,27 @@
             text-align: center;
             color: #4a5568;
             margin-bottom: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+        }
+        .logout-btn {
+            padding: 8px 16px;
+            background: #fc8181;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+            display: none;
+        }
+        .logout-btn:hover {
+            background: #f56565;
+        }
+        .logout-btn.show {
+            display: inline-block;
         }
         p {
             text-align: center;
@@ -241,7 +262,7 @@
             <button onclick="changeLanguage('es')" id="lang-es">🇪🇸 ES</button>
         </div>
         
-        <h1 data-i18n="title">PM2 LOG VIEWER</h1>
+        <h1 data-i18n="title">PM2 LOG VIEWER <button id="logout-btn" class="logout-btn" onclick="logout()">🚪 Sair</button></h1>
         <p data-i18n="subtitle">Selecione os arquivos de log (.log) e aplique filtros.</p>
         
         <div class="toolbar">
@@ -1128,7 +1149,47 @@
             // O usuário deve reativar manualmente
         }
 
-        window.onload = init;
+        // Funções de autenticação
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/api/auth-status');
+                const data = await response.json();
+                
+                if (data.enabled) {
+                    // Mostrar botão de logout se autenticação está habilitada
+                    const logoutBtn = document.getElementById('logout-btn');
+                    if (logoutBtn) {
+                        logoutBtn.classList.add('show');
+                    }
+                    
+                    // Se não está autenticado, redirecionar para login
+                    if (!data.authenticated) {
+                        window.location.href = '/login.html';
+                        return; // Parar execução aqui
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao verificar status de autenticação:', error);
+            }
+        }
+
+        async function logout() {
+            if (confirm('Deseja realmente sair?')) {
+                try {
+                    await fetch('/api/logout', { method: 'POST' });
+                    window.location.href = '/login.html';
+                } catch (error) {
+                    console.error('Erro ao fazer logout:', error);
+                    alert('Erro ao fazer logout. Tente novamente.');
+                }
+            }
+        }
+
+        // Executar ao carregar a página
+        window.onload = function() {
+            checkAuthStatus(); // Verificar autenticação primeiro
+            init(); // Depois inicializar a aplicação
+        };
     </script>
 </body>
 </html>

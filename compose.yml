@@ -9,16 +9,29 @@ services:
     volumes:
       # Monte o diretório de logs do host no container
       - /root/.pm2/logs:/app/logs:ro
+      # Volume para persistir o banco de dados de autenticação
+      - pm2-log-viewer-data:/app/data
     environment:
       - PORT=8001
       - TZ=America/Sao_Paulo
       - LOG_DIR=/app/logs
+      # Configurações de autenticação
+      - AUTH_ENABLED=true  # ✅ AUTENTICAÇÃO HABILITADA
+      - AUTH_DB_PATH=/app/data/auth.db
+      - SESSION_TIMEOUT=3600  # Tempo de sessão em segundos (padrão: 1 hora)
+      # Credenciais do usuário admin inicial (usado apenas na primeira execução)
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=admin123  # ⚠️ ALTERE ESTA SENHA PARA UMA SENHA FORTE!
     restart: unless-stopped
     networks:
       - log-viewer-network
     labels:
       - "com.docker.compose.project=pm2-log-viewer"
       - "description=PM2 Log Viewer - Web interface for viewing PM2 logs"
+
+volumes:
+  pm2-log-viewer-data:
+    driver: local
 
 networks:
   log-viewer-network:

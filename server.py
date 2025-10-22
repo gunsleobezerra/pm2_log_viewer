@@ -4,7 +4,13 @@ import json
 import re
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http import cookies
 import urllib.parse
+
+# Importar autenticação se habilitada
+AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'false').lower() == 'true'
+if AUTH_ENABLED:
+    from auth import get_auth_manager
 
 # Diretório onde estão os logs (configurável via variável de ambiente)
 LOG_DIR = os.environ.get('LOG_DIR', '/app/logs')
@@ -79,7 +85,137 @@ def parse_datetime_input(datetime_str):
         return None
 
 class LogServer(SimpleHTTPRequestHandler):
+    def _get_session_id(self):
+        """Extrai o session_id dos cookies."""
+        cookie_header = self.headers.get('Cookie')
+        if not cookie_header:
+            print(f"DEBUG: Sem cookie header no path {self.path}")
+            return None
+        
+        cookie = cookies.SimpleCookie()
+        cookie.load(cookie_header)
+        
+        if 'session_id' in cookie:
+            session_id = cookie['session_id'].value
+            print(f"DEBUG: Session ID encontrado: {session_id[:20]}... para {self.path}")
+            return session_id
+        
+        print(f"DEBUG: Cookie header presente mas sem session_id: {cookie_header}")
+        return None
+    
+    def _is_authenticated(self):
+        """Verifica se o usuário está autenticado."""
+        if not AUTH_ENABLED:
+            return True
+        
+        session_id = self._get_session_id()
+        if not session_id:
+            print(f"DEBUG: Sem session_id para {self.path}")
+            return False
+        
+        auth_manager = get_auth_manager()
+        is_valid = auth_manager.validate_session(session_id) is not None
+        print(f"DEBUG: Sessão válida: {is_valid} para {self.path}")
+        return is_valid
+    
+    def _send_json_response(self, data, status=200):
+        """Envia resposta JSON."""
+        self.send_response(status)
+        self.send_header('Content-type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+    
+    def _send_unauthorized(self):
+        """Envia resposta de não autorizado."""
+        self._send_json_response({'error': 'Unauthorized'}, 401)
+    
+    def _set_session_cookie(self, session_id):
+        """Define o cookie de sessão."""
+        cookie = cookies.SimpleCookie()
+        cookie['session_id'] = session_id
+        cookie['session_id']['path'] = '/'
+        cookie['session_id']['httponly'] = True
+        cookie['session_id']['samesite'] = 'Strict'
+        # cookie['session_id']['secure'] = True  # Descomente se usar HTTPS
+        self.send_header('Set-Cookie', cookie['session_id'].OutputString())
+    
+    def _clear_session_cookie(self):
+        """Remove o cookie de sessão."""
+        cookie = cookies.SimpleCookie()
+        cookie['session_id'] = ''
+        cookie['session_id']['path'] = '/'
+        cookie['session_id']['max-age'] = 0
+        self.send_header('Set-Cookie', cookie['session_id'].OutputString())
+    
+    def do_POST(self):
+        """Trata requisições POST para login/logout."""
+        if self.path == '/api/login':
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length)
+            
+            try:
+                data = json.loads(body.decode())
+                username = data.get('username', '')
+                password = data.get('password', '')
+                
+                if not AUTH_ENABLED:
+                    self._send_json_response({'error': 'Authentication not enabled'}, 400)
+                    return
+                
+                auth_manager = get_auth_manager()
+                user_id = auth_manager.verify_credentials(username, password)
+                
+                if user_id:
+                    session_id = auth_manager.create_session(user_id)
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self._set_session_cookie(session_id)
+                    self.end_headers()
+                    self.wfile.write(json.dumps({'success': True}).encode())
+                else:
+                    self._send_json_response({'error': 'Invalid credentials'}, 401)
+            except Exception as e:
+                self._send_json_response({'error': str(e)}, 400)
+        
+        elif self.path == '/api/logout':
+            if AUTH_ENABLED:
+                session_id = self._get_session_id()
+                if session_id:
+                    auth_manager = get_auth_manager()
+                    auth_manager.delete_session(session_id)
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self._clear_session_cookie()
+            self.end_headers()
+            self.wfile.write(json.dumps({'success': True}).encode())
+        else:
+            self.send_error(404)
+    
     def do_GET(self):
+        # Rotas públicas (não requerem autenticação)
+        public_routes = ['/login.html', '/api/auth-status']
+        
+        # Verificar status de autenticação
+        if self.path == '/api/auth-status':
+            self._send_json_response({
+                'enabled': AUTH_ENABLED,
+                'authenticated': self._is_authenticated()
+            })
+            return
+        
+        # Verificar autenticação para rotas protegidas
+        if AUTH_ENABLED and self.path not in public_routes:
+            if not self._is_authenticated():
+                # Redirecionar para login se for página HTML
+                if self.path == '/' or self.path == '/index.html' or self.path.startswith('/file'):
+                    self.send_response(302)
+                    self.send_header('Location', '/login.html')
+                    self.end_headers()
+                else:
+                    self._send_unauthorized()
+                return
+        
         if self.path == '/files':
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
