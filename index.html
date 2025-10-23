@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PM2 LOG VIEWER</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -87,6 +88,27 @@
         }
         button:hover {
             background: #5a67d8;
+        }
+        .download-btn {
+            margin-left: 10px;
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            box-shadow: 0 4px 15px rgba(72, 187, 120, 0.3);
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .download-btn:hover {
+            background: linear-gradient(135deg, #38a169, #2f855a);
+            box-shadow: 0 6px 20px rgba(72, 187, 120, 0.4);
+            transform: translateY(-2px);
+        }
+        mark {
+            background-color: #fef3c7;
+            color: #92400e;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: bold;
         }
         #results {
             width: 100%;
@@ -291,6 +313,10 @@
         <div class="form-group">
             <label for="search" data-i18n="labelSearch">Pesquisa (palavra-chave):</label>
             <input type="text" id="search" data-i18n-placeholder="placeholderSearch" placeholder="Ex: error">
+            <div style="margin-top: 5px;">
+                <input type="checkbox" id="filterOnlyMatches" checked>
+                <label for="filterOnlyMatches" style="font-weight: normal; font-size: 14px; color: #4a5568;">Trazer somente correspondências</label>
+            </div>
         </div>
         
         <div class="form-group">
@@ -304,6 +330,7 @@
         </div>
         
         <button onclick="loadAndFilterLogs()" data-i18n="btnLoadFilter">Carregar e Filtrar</button>
+        <button onclick="downloadLogs()" class="download-btn">📥 Baixar Logs</button>
         
         <div id="status" style="margin-top: 10px; color: #4a5568; font-weight: bold;"></div>
         <div id="sortInfo" style="margin-top: 5px; color: #718096; font-size: 12px; font-style: italic;"></div>
@@ -371,6 +398,7 @@
         let currentFile = '';
         let logFiles = [];
         let currentLanguage = 'pt';
+        let shouldHighlightSearch = false;
         
         // Variáveis para auto-refresh
         let autoRefreshInterval = null;
@@ -578,6 +606,9 @@
             setupColorPreviewListeners();
             setupAutoRefreshSelect();
             loadAutoRefreshState();
+            
+            // Configurar listener para salvar estado do checkbox automaticamente
+            document.getElementById('filterOnlyMatches').addEventListener('change', saveSettings);
         }
 
         async function loadFiles() {
@@ -632,6 +663,9 @@
                     if (settings.endTime) {
                         document.getElementById('endTime').value = settings.endTime;
                     }
+                    if (settings.filterOnlyMatches !== undefined) {
+                        document.getElementById('filterOnlyMatches').checked = settings.filterOnlyMatches;
+                    }
                 } catch (e) {
                     console.error('Erro ao carregar configurações salvas:', e);
                 }
@@ -643,7 +677,8 @@
                 file: document.getElementById('fileSelect').value,
                 search: document.getElementById('search').value,
                 startTime: document.getElementById('startTime').value,
-                endTime: document.getElementById('endTime').value
+                endTime: document.getElementById('endTime').value,
+                filterOnlyMatches: document.getElementById('filterOnlyMatches').checked
             };
             localStorage.setItem('logViewerSettings', JSON.stringify(settings));
         }
@@ -659,6 +694,7 @@
             document.getElementById('search').value = '';
             document.getElementById('startTime').value = '';
             document.getElementById('endTime').value = '';
+            document.getElementById('filterOnlyMatches').checked = true; // Restaurar para o padrão (filtrar)
             document.getElementById('results').innerHTML = '';
             document.getElementById('pagination').innerHTML = '';
             document.getElementById('sortInfo').textContent = '';
@@ -819,12 +855,16 @@
             currentSearchTerm = document.getElementById('search').value.toLowerCase();
             let startTime = document.getElementById('startTime').value;
             let endTime = document.getElementById('endTime').value;
+            const filterOnlyMatches = document.getElementById('filterOnlyMatches').checked;
             
             const statusDiv = document.getElementById('status');
             statusDiv.textContent = t('msgLoading');
 
+            // Se não filtrar apenas correspondências, fazer busca vazia para trazer todos os logs
+            const searchParam = filterOnlyMatches ? currentSearchTerm : '';
+            
             const params = new URLSearchParams({
-                search: currentSearchTerm,
+                search: searchParam,
                 start: startTime || '',
                 end: endTime || ''
             });
@@ -835,6 +875,15 @@
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 filteredResults = await response.json();
+                
+                // Se não filtrar apenas correspondências, aplicar destaque no frontend
+                if (!filterOnlyMatches && currentSearchTerm) {
+                    // Marcar que devemos destacar termos na exibição
+                    shouldHighlightSearch = true;
+                } else {
+                    shouldHighlightSearch = false;
+                }
+                
                 statusDiv.innerHTML = `${t('msgProcessing', filteredResults.length)} <span style="color: #666; font-size: 12px;">(📅 Logs mais recentes primeiro)</span>`;
                 
                 // Mostrar informação sobre a ordem de exibição
@@ -924,7 +973,7 @@
                     });
                     
                     // Destacar termo de busca
-                    if (currentSearchTerm) {
+                    if (shouldHighlightSearch && currentSearchTerm) {
                         const regex = new RegExp(`(${currentSearchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
                         displayLine = displayLine.replace(regex, '<mark>$1</mark>');
                     }
@@ -1147,6 +1196,44 @@
             
             // Não restaurar automaticamente o auto-refresh ativo por segurança
             // O usuário deve reativar manualmente
+        }
+
+        // Função para baixar logs
+        async function downloadLogs() {
+            if (!filteredResults || filteredResults.length === 0) {
+                alert('Nenhum log carregado. Carregue os logs primeiro.');
+                return;
+            }
+
+            const zip = new JSZip();
+            const totalPages = Math.ceil(filteredResults.length / itemsPerPage);
+
+            for (let page = 1; page <= totalPages; page++) {
+                const startIndex = (page - 1) * itemsPerPage;
+                const endIndex = startIndex + itemsPerPage;
+                const pageItems = filteredResults.slice(startIndex, endIndex);
+
+                // Reverter a ordem como na exibição
+                const reversedPageItems = [...pageItems].reverse();
+                const content = reversedPageItems.join('\n');
+
+                // Nome do arquivo: logs_pagina_X.txt
+                const fileName = `logs_pagina_${page}.txt`;
+                zip.file(fileName, content);
+            }
+
+            // Gerar o ZIP
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+            // Criar link de download
+            const url = URL.createObjectURL(zipBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `logs_${currentFile.replace('.log', '')}_${new Date().toISOString().split('T')[0]}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         // Funções de autenticação
