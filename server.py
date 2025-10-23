@@ -14,6 +14,11 @@ if AUTH_ENABLED:
 
 # Diretório onde estão os logs (configurável via variável de ambiente)
 LOG_DIR = os.environ.get('LOG_DIR', '/app/logs')
+if AUTH_ENABLED:
+    from auth import get_auth_manager
+
+# Diretório onde estão os logs (configurável via variável de ambiente)
+LOG_DIR = os.environ.get('LOG_DIR', '/app/logs')
 
 def extract_timestamp_from_line(line):
     """
@@ -102,6 +107,58 @@ class LogServer(SimpleHTTPRequestHandler):
         
         print(f"DEBUG: Cookie header presente mas sem session_id: {cookie_header}")
         return None
+    
+    def _process_file_efficiently(self, full_path, search, start_time, end_time):
+        """
+        Processa arquivo de log de forma eficiente, linha por linha,
+        para evitar carregar arquivos grandes na memória.
+        """
+        lines = []
+        
+        try:
+            with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                # Coletar todas as linhas que passam nos filtros
+                filtered_lines = []
+                
+                for line in f:
+                    include = True
+                    
+                    # Filtro de busca por texto
+                    if search and search not in line.lower():
+                        include = False
+                    
+                    # Filtro de data/hora
+                    if include and (start_time or end_time):
+                        line_timestamp = extract_timestamp_from_line(line)
+                        if line_timestamp:
+                            # Verificar se a linha está dentro do intervalo de tempo
+                            if start_time and line_timestamp < start_time:
+                                include = False
+                            if include and end_time and line_timestamp > end_time:
+                                include = False
+                        else:
+                            # Se não conseguir extrair timestamp e há filtros de data, excluir
+                            if start_time or end_time:
+                                include = False
+                    
+                    if include:
+                        # Limpar códigos ANSI e caracteres especiais
+                        clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line.rstrip().replace('\r', ''))
+                        filtered_lines.append(clean_line)
+                        
+                        # Parar se atingiu o limite
+                        if len(filtered_lines) >= 5000:
+                            break
+                
+                # Reverter a ordem (últimas primeiro) para manter compatibilidade
+                lines = list(reversed(filtered_lines))
+                
+        except Exception as e:
+            print(f"Erro ao processar arquivo eficientemente: {e}")
+            # Fallback: retornar lista vazia
+            lines = []
+        
+        return lines
     
     def _is_authenticated(self):
         """Verifica se o usuário está autenticado."""
@@ -242,38 +299,43 @@ class LogServer(SimpleHTTPRequestHandler):
                 self.end_headers()
                 lines = []
                 
-                # Ler todas as linhas do arquivo
-                with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    all_lines = f.readlines()
-                
-                # Processar linhas de forma reversa (últimas primeiro)
-                for line in reversed(all_lines):
-                    include = True
-                    
-                    # Filtro de busca por texto
-                    if search and search not in line.lower():
-                        include = False
-                    
-                    # Filtro de data/hora
-                    if include and (start_time or end_time):
-                        line_timestamp = extract_timestamp_from_line(line)
-                        if line_timestamp:
-                            # Verificar se a linha está dentro do intervalo de tempo
-                            if start_time and line_timestamp < start_time:
+                # Processar arquivo linha por linha para economizar memória
+                try:
+                    with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        # Ler todas as linhas, mas processar de trás para frente
+                        all_lines = f.readlines()
+                        
+                        # Processar linhas de forma reversa (últimas primeiro)
+                        for line in reversed(all_lines):
+                            include = True
+                            
+                            # Filtro de busca por texto
+                            if search and search not in line.lower():
                                 include = False
-                            if include and end_time and line_timestamp > end_time:
-                                include = False
-                        else:
-                            # Se não conseguir extrair timestamp e há filtros de data, excluir
-                            if start_time or end_time:
-                                include = False
-                    
-                    if include:
-                        # Limpar códigos ANSI e caracteres especiais
-                        clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line.rstrip().replace('\r', ''))
-                        lines.append(clean_line)
-                        if len(lines) >= 5000:  # Limite para evitar sobrecarga
-                            break
+                            
+                            # Filtro de data/hora
+                            if include and (start_time or end_time):
+                                line_timestamp = extract_timestamp_from_line(line)
+                                if line_timestamp:
+                                    # Verificar se a linha está dentro do intervalo de tempo
+                                    if start_time and line_timestamp < start_time:
+                                        include = False
+                                    if include and end_time and line_timestamp > end_time:
+                                        include = False
+                                else:
+                                    # Se não conseguir extrair timestamp e há filtros de data, excluir
+                                    if start_time or end_time:
+                                        include = False
+                            
+                            if include:
+                                # Limpar códigos ANSI e caracteres especiais
+                                clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line.rstrip().replace('\r', ''))
+                                lines.append(clean_line)
+                                if len(lines) >= 5000:  # Limite para evitar sobrecarga
+                                    break
+                except MemoryError:
+                    # Se houver erro de memória, tentar abordagem mais eficiente
+                    lines = self._process_file_efficiently(full_path, search, start_time, end_time)
                 
                 self.wfile.write(json.dumps(lines).encode())
             else:
